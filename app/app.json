@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "Campo Trecho",
+    "slug": "campo-trecho",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#2E5E3A",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "uy.campotrecho.app"
+    },
+    "android": {
+      "package": "uy.campotrecho.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#2E5E3A"
+      }
+    }
+  }
+}
