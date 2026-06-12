@@ -1,62 +1,16 @@
 import React, { createContext, useContext, useReducer } from 'react';
-import { COMISION } from './theme';
 
-// ============================================================
-// Campo Trecho — capa de datos
-// Hoy: estado en memoria con datos de ejemplo (demo / beta).
-// Mañana: reemplazar estas funciones por llamadas a la API
-// (Supabase / backend propio) sin tocar las pantallas.
-// ============================================================
+// Comisiones de la plataforma
+export const COMISION_COMPRADOR = 0.05; // 5% que paga el comprador sobre el subtotal
+export const COMISION_VENDEDOR = 0.05;  // 5% que descuenta la plataforma al vendedor
+export const COSTO_FLETE_BASE = 2200;   // UYU por viaje Canelones → Montevideo (estimado MVP)
 
-let nextId = 100;
+let nextId = 1;
 const uid = () => String(nextId++);
 
-// ---------- Datos de ejemplo (Canelones → Montevideo) ----------
-const PUBLICACIONES_INICIALES = [
-  {
-    id: '1',
-    productor: 'Raúl Méndez',
-    zona: 'Sauce, Canelones',
-    producto: 'Tomate redondo',
-    cantidadKg: 300,
-    precioKg: 38,
-    destino: 'Montevideo Centro',
-    fechaEntrega: '2026-06-15',
-    estado: 'disponible',
-  },
-  {
-    id: '2',
-    productor: 'María Olivera',
-    zona: 'Santa Rosa, Canelones',
-    producto: 'Morrón rojo',
-    cantidadKg: 120,
-    precioKg: 95,
-    destino: 'Montevideo Centro',
-    fechaEntrega: '2026-06-15',
-    estado: 'disponible',
-  },
-  {
-    id: '3',
-    productor: 'Jorge Píriz',
-    zona: 'San Jacinto, Canelones',
-    producto: 'Lechuga mantecosa',
-    cantidadKg: 80,
-    precioKg: 60,
-    destino: 'Ciudad Vieja',
-    fechaEntrega: '2026-06-16',
-    estado: 'disponible',
-  },
-];
-
-const PEDIDOS_INICIALES = [];
-
 // ---------- Lógica de flete compartido ----------
-// Agrupa publicaciones por destino y fecha (ventana de ±1 día).
-// El costo del flete se divide proporcional a los kg de cada productor.
-export const COSTO_FLETE_BASE = 2200; // UYU por viaje Canelones → Montevideo (estimado MVP)
-
 export function agruparFletes(publicaciones) {
-  const activas = publicaciones.filter((p) => p.estado !== 'entregado');
+  const activas = publicaciones.filter((p) => p.estado !== 'vendido');
   const grupos = [];
 
   for (const pub of activas) {
@@ -77,10 +31,8 @@ export function agruparFletes(publicaciones) {
     }
   }
 
-  // Cálculo del reparto proporcional del costo
   return grupos.map((g) => {
     const totalKg = g.publicaciones.reduce((s, p) => s + p.cantidadKg, 0);
-    const costoIndividual = COSTO_FLETE_BASE; // lo que pagaría cada uno por su cuenta
     return {
       ...g,
       totalKg,
@@ -90,12 +42,12 @@ export function agruparFletes(publicaciones) {
         const costoCompartido = Math.round(COSTO_FLETE_BASE * proporcion);
         return {
           publicacionId: p.id,
-          productor: p.productor,
+          productor: p.productorNombre,
           producto: p.producto,
           kg: p.cantidadKg,
           costoCompartido,
-          ahorro: costoIndividual - costoCompartido,
-          ahorroPct: Math.round((1 - costoCompartido / costoIndividual) * 100),
+          ahorro: COSTO_FLETE_BASE - costoCompartido,
+          ahorroPct: Math.round((1 - costoCompartido / COSTO_FLETE_BASE) * 100),
         };
       }),
     };
@@ -109,33 +61,93 @@ function diasEntre(a, b) {
 // ---------- Cálculo de pedido ----------
 export function calcularPedido(publicacion, kg) {
   const subtotal = kg * publicacion.precioKg;
-  const comision = Math.round(subtotal * COMISION);
-  return { subtotal, comision, total: subtotal + comision };
+  const comisionComprador = Math.round(subtotal * COMISION_COMPRADOR);
+  const comisionVendedor = Math.round(subtotal * COMISION_VENDEDOR);
+  return {
+    subtotal,
+    comisionComprador,
+    comisionVendedor,
+    totalComprador: subtotal + comisionComprador,
+    nettoVendedor: subtotal - comisionVendedor,
+  };
+}
+
+// ---------- Calificaciones ----------
+export function promedioCalificacion(calificaciones, productorId) {
+  const mias = calificaciones.filter((c) => c.productorId === productorId);
+  if (mias.length === 0) return null;
+  const promedio = mias.reduce((s, c) => s + c.puntuacion, 0) / mias.length;
+  return { promedio: promedio.toFixed(1), cantidad: mias.length };
 }
 
 // ---------- Estado global ----------
-const StoreContext = createContext(null);
+const ESTADO_INICIAL = {
+  usuarios: [],
+  usuarioActual: null,
+  publicaciones: [],
+  pedidos: [],
+  calificaciones: [],
+  error: null,
+};
 
 function reducer(state, action) {
   switch (action.type) {
+    case 'REGISTRAR': {
+      const { email, password, rol, nombre, negocio, zona } = action.payload;
+      if (state.usuarios.find((u) => u.email === email)) {
+        return { ...state, error: 'El email ya está registrado.' };
+      }
+      const usuario = {
+        id: uid(),
+        email,
+        password,
+        rol,
+        nombre,
+        negocio: negocio || null,
+        zona: zona || null,
+      };
+      return { ...state, usuarios: [...state.usuarios, usuario], usuarioActual: usuario, error: null };
+    }
+
+    case 'LOGIN': {
+      const { email, password } = action.payload;
+      const usuario = state.usuarios.find((u) => u.email === email && u.password === password);
+      if (!usuario) return { ...state, error: 'Email o contraseña incorrectos.' };
+      return { ...state, usuarioActual: usuario, error: null };
+    }
+
+    case 'LOGOUT':
+      return { ...state, usuarioActual: null };
+
+    case 'LIMPIAR_ERROR':
+      return { ...state, error: null };
+
     case 'PUBLICAR': {
       const pub = { id: uid(), estado: 'disponible', ...action.payload };
       return { ...state, publicaciones: [pub, ...state.publicaciones] };
     }
+
     case 'PEDIR': {
-      const { publicacion, kg, comprador } = action.payload;
-      const { subtotal, comision, total } = calcularPedido(publicacion, kg);
+      const { publicacion, kg, compradorId, compradorNombre } = action.payload;
+      const { subtotal, comisionComprador, comisionVendedor, totalComprador, nettoVendedor } =
+        calcularPedido(publicacion, kg);
       const pedido = {
         id: uid(),
         publicacionId: publicacion.id,
         producto: publicacion.producto,
-        productor: publicacion.productor,
-        comprador,
+        productorId: publicacion.productorId,
+        productorNombre: publicacion.productorNombre,
+        productorNegocio: publicacion.productorNegocio,
+        compradorId,
+        compradorNombre,
         kg,
         subtotal,
-        comision,
-        total,
+        comisionComprador,
+        comisionVendedor,
+        totalComprador,
+        nettoVendedor,
         estado: 'confirmado',
+        calificado: false,
         fecha: new Date().toISOString().slice(0, 10),
       };
       const publicaciones = state.publicaciones.map((p) => {
@@ -149,16 +161,38 @@ function reducer(state, action) {
       });
       return { ...state, publicaciones, pedidos: [pedido, ...state.pedidos] };
     }
+
+    case 'CALIFICAR': {
+      const { pedidoId, productorId, compradorId, compradorNombre, puntuacion, comentario } = action.payload;
+      const calificacion = {
+        id: uid(),
+        pedidoId,
+        productorId,
+        compradorId,
+        compradorNombre,
+        puntuacion,
+        comentario,
+        fecha: new Date().toISOString().slice(0, 10),
+      };
+      const pedidos = state.pedidos.map((p) =>
+        p.id === pedidoId ? { ...p, calificado: true } : p
+      );
+      return {
+        ...state,
+        calificaciones: [...state.calificaciones, calificacion],
+        pedidos,
+      };
+    }
+
     default:
       return state;
   }
 }
 
+const StoreContext = createContext(null);
+
 export function StoreProvider({ children }) {
-  const [state, dispatch] = useReducer(reducer, {
-    publicaciones: PUBLICACIONES_INICIALES,
-    pedidos: PEDIDOS_INICIALES,
-  });
+  const [state, dispatch] = useReducer(reducer, ESTADO_INICIAL);
   return (
     <StoreContext.Provider value={{ state, dispatch }}>
       {children}

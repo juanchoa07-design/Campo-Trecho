@@ -75,6 +75,31 @@ export function Vacio({ mensaje }) {
   );
 }
 
+// Muestra estrellas de calificación. Si se pasa onSelect, las estrellas son interactivas.
+export function Estrellas({ puntuacion, cantidad, onSelect, size = 'sm' }) {
+  const llenas = Math.round(Number(puntuacion) || 0);
+  const fontSize = size === 'lg' ? 32 : 15;
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <TouchableOpacity
+          key={i}
+          onPress={onSelect ? () => onSelect(i) : undefined}
+          disabled={!onSelect}
+          activeOpacity={0.7}
+        >
+          <Text style={{ fontSize, color: i <= llenas ? colors.dorado : colors.borde }}>★</Text>
+        </TouchableOpacity>
+      ))}
+      {cantidad != null && (
+        <Text style={{ fontSize: 12, color: colors.textoSuave, marginLeft: 5 }}>
+          {puntuacion} ({cantidad})
+        </Text>
+      )}
+    </View>
+  );
+}
+
 const s = StyleSheet.create({
   pantalla: { flex: 1, backgroundColor: colors.crema },
   encabezado: {

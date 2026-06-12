@@ -1,42 +1,48 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Alert } from 'react-native';
 import { colors } from '../theme';
-import { useStore, agruparFletes, fmt, COSTO_FLETE_BASE } from '../store';
-import { Pantalla, Encabezado, Tarjeta, Boton, Campo, Etiqueta, Vacio } from '../components';
-
-// Pantallas del rol PRODUCTOR:
-//  - inicio: resumen + accesos
-//  - publicar: formulario de cosecha
-//  - publicaciones: mis publicaciones
-//  - fletes: fletes compartidos propuestos
+import { useStore, agruparFletes, promedioCalificacion, fmt, COSTO_FLETE_BASE } from '../store';
+import { Pantalla, Encabezado, Tarjeta, Boton, Campo, Etiqueta, Vacio, Estrellas } from '../components';
 
 export default function Productor({ salir }) {
   const [vista, setVista] = useState('inicio');
   if (vista === 'publicar') return <Publicar volver={() => setVista('inicio')} />;
   if (vista === 'publicaciones') return <MisPublicaciones volver={() => setVista('inicio')} />;
   if (vista === 'fletes') return <Fletes volver={() => setVista('inicio')} />;
+  if (vista === 'negocio') return <MiNegocio volver={() => setVista('inicio')} />;
   return <Inicio ir={setVista} salir={salir} />;
 }
 
 function Inicio({ ir, salir }) {
   const { state } = useStore();
-  const fletes = agruparFletes(state.publicaciones);
+  const { usuarioActual, publicaciones, calificaciones } = state;
+
+  const misPublicaciones = publicaciones.filter((p) => p.productorId === usuarioActual.id);
+  const activas = misPublicaciones.filter((p) => p.estado === 'disponible').length;
+  const fletes = agruparFletes(publicaciones);
   const compartidos = fletes.filter((f) => f.publicaciones.length > 1).length;
+  const rating = promedioCalificacion(calificaciones, usuarioActual.id);
 
   return (
     <Pantalla>
       <Encabezado titulo="Campo Trecho · Productor" onAtras={salir} />
       <ScrollView>
         <Tarjeta>
-          <Text style={s.saludo}>¡Buen día! 🌱</Text>
-          <Text style={s.sub}>
-            Publicá tu cosecha en segundos y el sistema busca con quién compartir el flete.
-          </Text>
+          <Text style={s.saludo}>¡Buen día, {usuarioActual.nombre}! 🌱</Text>
+          <Text style={s.negocioNombre}>{usuarioActual.negocio}</Text>
+          {usuarioActual.zona ? <Text style={s.sub}>{usuarioActual.zona}</Text> : null}
+          {rating ? (
+            <View style={{ marginTop: 8 }}>
+              <Estrellas puntuacion={rating.promedio} cantidad={rating.cantidad} />
+            </View>
+          ) : (
+            <Text style={[s.sub, { marginTop: 8 }]}>Aún sin calificaciones</Text>
+          )}
         </Tarjeta>
 
         <View style={s.fila}>
           <Tarjeta style={s.mitad}>
-            <Text style={s.numero}>{state.publicaciones.filter((p) => p.estado === 'disponible').length}</Text>
+            <Text style={s.numero}>{activas}</Text>
             <Text style={s.numeroLabel}>Ofertas activas</Text>
           </Tarjeta>
           <Tarjeta style={s.mitad}>
@@ -49,6 +55,7 @@ function Inicio({ ir, salir }) {
           <Boton titulo="+ Publicar cosecha" onPress={() => ir('publicar')} />
           <Boton titulo="Mis publicaciones" variante="secundario" onPress={() => ir('publicaciones')} />
           <Boton titulo="Ver fletes compartidos" variante="secundario" onPress={() => ir('fletes')} />
+          <Boton titulo="Mi negocio y calificaciones" variante="secundario" onPress={() => ir('negocio')} />
         </View>
       </ScrollView>
     </Pantalla>
@@ -56,7 +63,8 @@ function Inicio({ ir, salir }) {
 }
 
 function Publicar({ volver }) {
-  const { dispatch } = useStore();
+  const { state, dispatch } = useStore();
+  const { usuarioActual } = state;
   const [producto, setProducto] = useState('');
   const [cantidad, setCantidad] = useState('');
   const [precio, setPrecio] = useState('');
@@ -69,8 +77,10 @@ function Publicar({ volver }) {
     dispatch({
       type: 'PUBLICAR',
       payload: {
-        productor: 'Mi establecimiento',
-        zona: 'Canelones',
+        productorId: usuarioActual.id,
+        productorNombre: usuarioActual.nombre,
+        productorNegocio: usuarioActual.negocio,
+        zona: usuarioActual.zona || '',
         producto,
         cantidadKg: Number(cantidad),
         precioKg: Number(precio),
@@ -89,16 +99,21 @@ function Publicar({ volver }) {
     <Pantalla>
       <Encabezado titulo="Publicar cosecha" onAtras={volver} />
       <ScrollView contentContainerStyle={{ padding: 16 }}>
+        <Tarjeta style={{ marginHorizontal: 0 }}>
+          <Text style={s.sub}>
+            Publicando como <Text style={{ fontWeight: '700', color: colors.verde }}>{usuarioActual.negocio || usuarioActual.nombre}</Text>
+          </Text>
+          <Text style={[s.sub, { marginTop: 4 }]}>
+            La plataforma cobrará un 5% de la venta sobre el precio que fijes.
+          </Text>
+        </Tarjeta>
+
         <Campo etiqueta="Producto" placeholder="Ej: Tomate redondo" value={producto} onChangeText={setProducto} />
         <Campo etiqueta="Cantidad (kg)" placeholder="Ej: 300" keyboardType="numeric" value={cantidad} onChangeText={setCantidad} />
         <Campo etiqueta="Precio por kg ($U)" placeholder="Ej: 38" keyboardType="numeric" value={precio} onChangeText={setPrecio} />
         <Campo etiqueta="Destino" placeholder="Ej: Montevideo Centro" value={destino} onChangeText={setDestino} />
         <Campo etiqueta="Fecha de entrega (AAAA-MM-DD)" placeholder="2026-06-15" value={fecha} onChangeText={setFecha} />
         <Boton titulo="Publicar" onPress={publicar} deshabilitado={!valido} />
-        <Text style={s.nota}>
-          Al publicar, tu oferta entra al sistema de flete compartido y queda visible para
-          restaurantes, ferias y almacenes.
-        </Text>
       </ScrollView>
     </Pantalla>
   );
@@ -106,12 +121,15 @@ function Publicar({ volver }) {
 
 function MisPublicaciones({ volver }) {
   const { state } = useStore();
+  const { usuarioActual, publicaciones } = state;
+  const mias = publicaciones.filter((p) => p.productorId === usuarioActual.id);
+
   return (
     <Pantalla>
       <Encabezado titulo="Mis publicaciones" onAtras={volver} />
       <ScrollView>
-        {state.publicaciones.length === 0 && <Vacio mensaje="Todavía no publicaste ninguna cosecha." />}
-        {state.publicaciones.map((p) => (
+        {mias.length === 0 && <Vacio mensaje="Todavía no publicaste ninguna cosecha." />}
+        {mias.map((p) => (
           <Tarjeta key={p.id}>
             <View style={s.filaEntre}>
               <Text style={s.titulo}>{p.producto}</Text>
@@ -122,7 +140,6 @@ function MisPublicaciones({ volver }) {
             </View>
             <Text style={s.detalle}>{p.cantidadKg} kg · {fmt(p.precioKg)}/kg</Text>
             <Text style={s.detalle}>📍 {p.destino} · 📅 {p.fechaEntrega}</Text>
-            <Text style={s.detalleSuave}>{p.productor} — {p.zona}</Text>
           </Tarjeta>
         ))}
       </ScrollView>
@@ -172,9 +189,53 @@ function Fletes({ volver }) {
   );
 }
 
+function MiNegocio({ volver }) {
+  const { state } = useStore();
+  const { usuarioActual, calificaciones } = state;
+  const rating = promedioCalificacion(calificaciones, usuarioActual.id);
+  const misCalificaciones = calificaciones.filter((c) => c.productorId === usuarioActual.id);
+
+  return (
+    <Pantalla>
+      <Encabezado titulo="Mi negocio" onAtras={volver} />
+      <ScrollView>
+        <Tarjeta>
+          <Text style={s.titulo}>{usuarioActual.negocio || usuarioActual.nombre}</Text>
+          {usuarioActual.zona ? <Text style={s.detalle}>📍 {usuarioActual.zona}</Text> : null}
+          <Text style={s.detalle}>✉️ {usuarioActual.email}</Text>
+          {rating ? (
+            <View style={{ marginTop: 10 }}>
+              <Estrellas puntuacion={rating.promedio} cantidad={rating.cantidad} />
+            </View>
+          ) : (
+            <Text style={[s.sub, { marginTop: 10 }]}>Todavía sin calificaciones de compradores.</Text>
+          )}
+        </Tarjeta>
+
+        <Text style={s.seccion}>Calificaciones recibidas</Text>
+        {misCalificaciones.length === 0 && (
+          <Vacio mensaje="Cuando un comprador te califique, aparecerá aquí." />
+        )}
+        {misCalificaciones.map((c) => (
+          <Tarjeta key={c.id}>
+            <View style={s.filaEntre}>
+              <Text style={s.negrita}>{c.compradorNombre}</Text>
+              <Estrellas puntuacion={c.puntuacion} />
+            </View>
+            {c.comentario ? <Text style={s.detalle}>"{c.comentario}"</Text> : null}
+            <Text style={s.detalleSuave}>📅 {c.fecha}</Text>
+          </Tarjeta>
+        ))}
+      </ScrollView>
+    </Pantalla>
+  );
+}
+
 const s = StyleSheet.create({
-  saludo: { fontSize: 20, fontWeight: '800', color: colors.texto },
-  sub: { marginTop: 6, color: colors.textoSuave, fontSize: 14, lineHeight: 20 },
+  saludo: { fontSize: 19, fontWeight: '800', color: colors.texto },
+  negocioNombre: { fontSize: 15, fontWeight: '700', color: colors.verde, marginTop: 2 },
+  sub: { color: colors.textoSuave, fontSize: 13 },
+  seccion: { fontSize: 14, fontWeight: '700', color: colors.textoSuave, paddingHorizontal: 20, marginTop: 16, marginBottom: 4 },
   fila: { flexDirection: 'row' },
   mitad: { flex: 1, alignItems: 'center' },
   filaEntre: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
@@ -185,6 +246,5 @@ const s = StyleSheet.create({
   detalleSuave: { fontSize: 13, color: colors.textoSuave, marginTop: 4 },
   negrita: { fontWeight: '700', color: colors.texto },
   ahorro: { color: colors.verdeClaro, fontWeight: '700' },
-  nota: { marginTop: 14, fontSize: 13, color: colors.textoSuave, lineHeight: 19 },
   separador: { height: 1, backgroundColor: colors.borde, marginVertical: 10 },
 });
