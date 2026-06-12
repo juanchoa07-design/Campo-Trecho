@@ -10,7 +10,7 @@ import { Campo, Boton } from '../components';
 const logo = require('../../assets/logo.png');
 
 export default function Login() {
-  const { state, dispatch } = useStore();
+  const { state, dispatch, api } = useStore();
   const [modo, setModo] = useState('login'); // 'login' | 'registro'
   const [rol, setRol] = useState('comprador');
   const [nombre, setNombre] = useState('');
@@ -39,7 +39,7 @@ export default function Login() {
       Alert.alert('Faltan datos', 'Ingresá tu email y contraseña.');
       return;
     }
-    dispatch({ type: 'LOGIN', payload: { email: email.trim().toLowerCase(), password } });
+    api.login(email.trim().toLowerCase(), password);
   };
 
   const registrar = () => {
@@ -55,16 +55,13 @@ export default function Login() {
       Alert.alert('Contraseña muy corta', 'Usá al menos 6 caracteres.');
       return;
     }
-    dispatch({
-      type: 'REGISTRAR',
-      payload: {
-        email: email.trim().toLowerCase(),
-        password,
-        rol,
-        nombre: nombre.trim(),
-        negocio: negocio.trim() || null,
-        zona: zona.trim() || null,
-      },
+    api.registrar({
+      email: email.trim().toLowerCase(),
+      password,
+      rol,
+      nombre: nombre.trim(),
+      negocio: negocio.trim() || null,
+      zona: zona.trim() || null,
     });
   };
 

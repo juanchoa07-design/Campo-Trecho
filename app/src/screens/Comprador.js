@@ -1,72 +1,125 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, TextInput } from 'react-native';
+import { View, Text, ScrollView, Image, StyleSheet, Alert, TextInput, TouchableOpacity } from 'react-native';
 import { colors } from '../theme';
 import { useStore, calcularPedido, promedioCalificacion, fmt } from '../store';
 import { Pantalla, Encabezado, Tarjeta, Boton, Campo, Etiqueta, Vacio, Estrellas } from '../components';
+import EditarPerfil from './EditarPerfil';
 
 export default function Comprador({ salir }) {
-  const [vista, setVista] = useState('catalogo');
-  const [seleccion, setSeleccion] = useState(null);
+  const [vista, setVista] = useState('negocios');
+  const [negocioSeleccionado, setNegocioSeleccionado] = useState(null);
+  const [productoSeleccionado, setProductoSeleccionado] = useState(null);
 
-  if (vista === 'detalle' && seleccion)
+  if (vista === 'perfil') return <EditarPerfil volver={() => setVista('negocios')} />;
+
+  if (vista === 'tienda' && negocioSeleccionado)
+    return (
+      <TiendaProductor
+        productor={negocioSeleccionado}
+        volver={() => setVista('negocios')}
+        elegir={(p) => { setProductoSeleccionado(p); setVista('detalle'); }}
+      />
+    );
+
+  if (vista === 'detalle' && productoSeleccionado)
     return (
       <Detalle
-        publicacion={seleccion}
-        volver={() => setVista('catalogo')}
+        publicacion={productoSeleccionado}
+        volver={() => setVista('tienda')}
         irPedidos={() => setVista('pedidos')}
       />
     );
-  if (vista === 'pedidos') return <MisPedidos volver={() => setVista('catalogo')} />;
+
+  if (vista === 'pedidos')
+    return <MisPedidos volver={() => setVista('negocios')} />;
+
   return (
-    <Catalogo
+    <ListaNegocios
       salir={salir}
       verPedidos={() => setVista('pedidos')}
-      elegir={(p) => { setSeleccion(p); setVista('detalle'); }}
+      editarPerfil={() => setVista('perfil')}
+      abrirNegocio={(productor) => { setNegocioSeleccionado(productor); setVista('tienda'); }}
     />
   );
 }
 
-function Catalogo({ elegir, verPedidos, salir }) {
+// ---------- Pantalla 1: lista de negocios (estilo Pedidos Ya) ----------
+function ListaNegocios({ salir, verPedidos, editarPerfil, abrirNegocio }) {
   const { state } = useStore();
-  const { publicaciones, calificaciones, usuarioActual } = state;
-  const disponibles = publicaciones.filter((p) => p.estado === 'disponible');
+  const { publicaciones, calificaciones, usuarios, usuarioActual } = state;
+  const productores = usuarios.filter((u) => u.rol === 'productor');
+  const fotoUri = usuarioActual.foto_url ?? usuarioActual.fotoUri ?? null;
+  const inicial = (usuarioActual.negocio || usuarioActual.nombre || '?')[0].toUpperCase();
 
   return (
     <Pantalla>
-      <Encabezado titulo="Campo Trecho · Comprador" onAtras={salir} />
+      <Encabezado titulo="Campo Trecho" onAtras={salir} />
       <ScrollView>
-        <Tarjeta>
-          <Text style={s.saludo}>Hola, {usuarioActual.nombre} 🥬</Text>
-          <Text style={s.sub}>
-            Comprá directo a productores de Canelones. Sin intermediarios, con logística incluida.
-          </Text>
-        </Tarjeta>
+        <View style={s.heroBanner}>
+          <View style={s.heroFila}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.heroTitulo}>Cosecha fresca 🥬</Text>
+              <Text style={s.heroSub}>Directo de productores de Canelones</Text>
+            </View>
+            <TouchableOpacity onPress={editarPerfil} activeOpacity={0.8}>
+              {fotoUri
+                ? <Image source={{ uri: fotoUri }} style={s.heroFoto} />
+                : <View style={s.heroAvatar}><Text style={s.heroInicial}>{inicial}</Text></View>}
+            </TouchableOpacity>
+          </View>
+        </View>
 
-        {disponibles.length === 0 && <Vacio mensaje="No hay ofertas disponibles en este momento." />}
-        {disponibles.map((p) => {
-          const rating = promedioCalificacion(calificaciones, p.productorId);
+        <Text style={s.seccionTitulo}>Productores disponibles</Text>
+
+        {productores.length === 0 && (
+          <Vacio mensaje="Todavía no hay productores registrados." />
+        )}
+
+        {productores.map((productor) => {
+          const susProductos = publicaciones.filter(
+            (p) => p.productorId === productor.id && p.estado === 'disponible'
+          );
+          const rating = promedioCalificacion(calificaciones, productor.id);
+          const inicial = (productor.negocio || productor.nombre || '?')[0].toUpperCase();
+
           return (
-            <Tarjeta key={p.id}>
-              <View style={s.filaEntre}>
-                <Text style={s.titulo}>{p.producto}</Text>
-                <Text style={s.precio}>{fmt(p.precioKg)}/kg</Text>
+            <TouchableOpacity
+              key={productor.id}
+              activeOpacity={0.85}
+              onPress={() => abrirNegocio(productor)}
+            >
+              <View style={s.negocioCard}>
+                {/* Avatar con inicial */}
+                <View style={s.avatar}>
+                  <Text style={s.avatarLetra}>{inicial}</Text>
+                </View>
+
+                <View style={s.negocioInfo}>
+                  <Text style={s.negocioNombre}>{productor.negocio || productor.nombre}</Text>
+                  {productor.zona ? (
+                    <Text style={s.negocioZona}>📍 {productor.zona}</Text>
+                  ) : null}
+                  <View style={s.negocioMeta}>
+                    {rating ? (
+                      <Estrellas puntuacion={rating.promedio} cantidad={rating.cantidad} />
+                    ) : (
+                      <Text style={s.sinRating}>Sin calificaciones aún</Text>
+                    )}
+                    <Text style={s.cantProd}>
+                      {susProductos.length > 0
+                        ? `${susProductos.length} producto${susProductos.length > 1 ? 's' : ''}`
+                        : 'Sin stock'}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={s.chevron}>›</Text>
               </View>
-              <Text style={s.detalle}>{p.cantidadKg} kg disponibles</Text>
-              <Text style={s.negocioNombre}>🏪 {p.productorNegocio || p.productorNombre}</Text>
-              <View style={{ marginTop: 4 }}>
-                {rating ? (
-                  <Estrellas puntuacion={rating.promedio} cantidad={rating.cantidad} />
-                ) : (
-                  <Text style={s.detalleSuave}>Sin calificaciones aún</Text>
-                )}
-              </View>
-              <Text style={s.detalleSuave}>📅 Entrega: {p.fechaEntrega} · 📍 {p.destino}</Text>
-              <Boton titulo="Hacer pedido" onPress={() => elegir(p)} />
-            </Tarjeta>
+            </TouchableOpacity>
           );
         })}
 
-        <View style={{ padding: 16 }}>
+        <View style={{ paddingHorizontal: 16, paddingBottom: 24 }}>
           <Boton titulo="Mis pedidos" variante="secundario" onPress={verPedidos} />
         </View>
       </ScrollView>
@@ -74,9 +127,72 @@ function Catalogo({ elegir, verPedidos, salir }) {
   );
 }
 
+// ---------- Pantalla 2: tienda del productor ----------
+function TiendaProductor({ productor, volver, elegir }) {
+  const { state } = useStore();
+  const { publicaciones, calificaciones } = state;
+  const rating = promedioCalificacion(calificaciones, productor.id);
+  const productos = publicaciones.filter(
+    (p) => p.productorId === productor.id && p.estado === 'disponible'
+  );
+
+  return (
+    <Pantalla>
+      <Encabezado titulo={productor.negocio || productor.nombre} onAtras={volver} />
+      <ScrollView>
+        {/* Header del negocio */}
+        <View style={s.tiendaHeader}>
+          <View style={s.avatarGrande}>
+            <Text style={s.avatarLetraGrande}>
+              {(productor.negocio || productor.nombre || '?')[0].toUpperCase()}
+            </Text>
+          </View>
+          <Text style={s.tiendaNombre}>{productor.negocio || productor.nombre}</Text>
+          {productor.zona ? <Text style={s.tiendaZona}>📍 {productor.zona}</Text> : null}
+          {rating ? (
+            <View style={{ marginTop: 6 }}>
+              <Estrellas puntuacion={rating.promedio} cantidad={rating.cantidad} />
+            </View>
+          ) : (
+            <Text style={s.sinRating}>Sin calificaciones aún</Text>
+          )}
+        </View>
+
+        <Text style={s.seccionTitulo}>Productos disponibles</Text>
+
+        {productos.length === 0 && (
+          <Vacio mensaje="Este productor no tiene stock disponible ahora." />
+        )}
+
+        {productos.map((p) => (
+          <Tarjeta key={p.id}>
+            <View style={s.productoFila}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.productoNombre}>{p.producto}</Text>
+                <Text style={s.productoDetalle}>{p.cantidadKg} kg disponibles</Text>
+                <Text style={s.productoDetalle}>📅 Entrega: {p.fechaEntrega} · 📍 {p.destino}</Text>
+              </View>
+              <View style={s.productoPrecioCol}>
+                <Text style={s.productoPrecio}>{fmt(p.precioKg)}</Text>
+                <Text style={s.productoPrecioSub}>por kg</Text>
+                <TouchableOpacity style={s.btnAgregar} onPress={() => elegir(p)} activeOpacity={0.8}>
+                  <Text style={s.btnAgregarTxt}>Pedir</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Tarjeta>
+        ))}
+
+        <View style={{ height: 24 }} />
+      </ScrollView>
+    </Pantalla>
+  );
+}
+
+// ---------- Pantalla 3: formulario de pedido ----------
 function Detalle({ publicacion, volver, irPedidos }) {
   const { state, dispatch } = useStore();
-  const { usuarioActual, calificaciones } = state;
+  const { usuarioActual } = state;
   const [kg, setKg] = useState('');
   const cantidad = Number(kg);
   const valido = cantidad > 0 && cantidad <= publicacion.cantidadKg;
@@ -84,8 +200,6 @@ function Detalle({ publicacion, volver, irPedidos }) {
   const { subtotal, comisionComprador, totalComprador, nettoVendedor } = valido
     ? calcularPedido(publicacion, cantidad)
     : { subtotal: 0, comisionComprador: 0, totalComprador: 0, nettoVendedor: 0 };
-
-  const rating = promedioCalificacion(calificaciones, publicacion.productorId);
 
   const confirmar = () => {
     dispatch({
@@ -106,17 +220,14 @@ function Detalle({ publicacion, volver, irPedidos }) {
 
   return (
     <Pantalla>
-      <Encabezado titulo="Hacer pedido" onAtras={volver} />
+      <Encabezado titulo="Confirmar pedido" onAtras={volver} />
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
         <Tarjeta>
-          <Text style={s.titulo}>{publicacion.producto}</Text>
-          <Text style={s.detalle}>{fmt(publicacion.precioKg)}/kg · {publicacion.cantidadKg} kg disponibles</Text>
-          <Text style={s.negocioNombre}>🏪 {publicacion.productorNegocio || publicacion.productorNombre}</Text>
-          {rating ? (
-            <View style={{ marginTop: 6 }}>
-              <Estrellas puntuacion={rating.promedio} cantidad={rating.cantidad} />
-            </View>
-          ) : null}
+          <Text style={s.productoNombre}>{publicacion.producto}</Text>
+          <Text style={s.productoDetalle}>{fmt(publicacion.precioKg)}/kg · {publicacion.cantidadKg} kg disponibles</Text>
+          <Text style={[s.productoDetalle, { color: colors.verde, fontWeight: '600', marginTop: 4 }]}>
+            🏪 {publicacion.productorNegocio || publicacion.productorNombre}
+          </Text>
           <Etiqueta texto={`Entrega ${publicacion.fechaEntrega}`} style={{ marginTop: 8 }} />
         </Tarjeta>
 
@@ -148,11 +259,12 @@ function Detalle({ publicacion, volver, irPedidos }) {
   );
 }
 
+// ---------- Pantalla 4: mis pedidos + calificar negocio ----------
 function MisPedidos({ volver }) {
   const { state, dispatch } = useStore();
   const { usuarioActual, pedidos } = state;
   const misPedidos = pedidos.filter((p) => p.compradorId === usuarioActual.id);
-  const [calificando, setCalificando] = useState(null); // pedidoId en calificación
+  const [calificando, setCalificando] = useState(null);
   const [estrellas, setEstrellas] = useState(0);
   const [comentario, setComentario] = useState('');
 
@@ -185,31 +297,36 @@ function MisPedidos({ volver }) {
         {misPedidos.length === 0 && <Vacio mensaje="Todavía no hiciste ningún pedido." />}
         {misPedidos.map((p) => (
           <Tarjeta key={p.id}>
-            <View style={s.filaEntre}>
-              <Text style={s.titulo}>{p.producto}</Text>
+            <View style={s.pedidoFila}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.productoNombre}>{p.producto}</Text>
+                <Text style={[s.productoDetalle, { color: colors.verde, fontWeight: '600' }]}>
+                  🏪 {p.productorNegocio || p.productorNombre}
+                </Text>
+                <Text style={s.productoDetalle}>{p.kg} kg · {fmt(p.totalComprador)}</Text>
+                <Text style={s.detalleSuave}>📅 {p.fecha}</Text>
+              </View>
               <Etiqueta texto="Confirmado" />
             </View>
-            <Text style={s.detalle}>{p.kg} kg · Total {fmt(p.totalComprador)}</Text>
-            <Text style={s.negocioNombre}>🏪 {p.productorNegocio || p.productorNombre}</Text>
-            <Text style={s.detalleSuave}>📅 {p.fecha}</Text>
 
             {!p.calificado && calificando !== p.id && (
               <Boton
-                titulo="Calificar productor"
+                titulo="Calificar negocio"
                 variante="secundario"
                 onPress={() => { setCalificando(p.id); setEstrellas(0); setComentario(''); }}
               />
             )}
 
             {p.calificado && (
-              <Text style={[s.detalleSuave, { marginTop: 8, color: colors.verdeClaro, fontWeight: '600' }]}>
-                ✅ Ya calificaste este pedido
-              </Text>
+              <Text style={s.yaCalificado}>✅ Negocio calificado</Text>
             )}
 
             {calificando === p.id && (
               <View style={s.calificacionBox}>
-                <Text style={s.calificacionTitulo}>¿Cómo fue tu experiencia?</Text>
+                <Text style={s.calificacionTitulo}>
+                  ¿Cómo fue tu experiencia con{'\n'}
+                  <Text style={{ color: colors.verde }}>{p.productorNegocio || p.productorNombre}</Text>?
+                </Text>
                 <Estrellas puntuacion={estrellas} onSelect={setEstrellas} size="lg" />
                 <TextInput
                   style={s.comentarioInput}
@@ -231,6 +348,7 @@ function MisPedidos({ volver }) {
             )}
           </Tarjeta>
         ))}
+        <View style={{ height: 24 }} />
       </ScrollView>
     </Pantalla>
   );
@@ -239,24 +357,115 @@ function MisPedidos({ volver }) {
 function Fila({ label, valor, negrita }) {
   return (
     <View style={s.filaEntre}>
-      <Text style={[s.detalle, negrita && s.negrita]}>{label}</Text>
-      <Text style={[s.detalle, negrita && s.negrita]}>{valor}</Text>
+      <Text style={[s.productoDetalle, negrita && s.negrita]}>{label}</Text>
+      <Text style={[s.productoDetalle, negrita && s.negrita]}>{valor}</Text>
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  saludo: { fontSize: 19, fontWeight: '800', color: colors.texto },
-  sub: { marginTop: 6, color: colors.textoSuave, fontSize: 14, lineHeight: 20 },
-  filaEntre: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
-  titulo: { fontSize: 16, fontWeight: '700', color: colors.texto },
-  precio: { fontSize: 16, fontWeight: '800', color: colors.verde },
-  negocioNombre: { fontSize: 13, fontWeight: '600', color: colors.verde, marginTop: 4 },
-  detalle: { fontSize: 14, color: colors.texto, marginTop: 4 },
-  detalleSuave: { fontSize: 13, color: colors.textoSuave, marginTop: 4 },
-  negrita: { fontWeight: '800' },
-  nota: { marginTop: 10, fontSize: 12, color: colors.textoSuave },
-  separador: { height: 1, backgroundColor: colors.borde, marginVertical: 10 },
+  // Hero banner
+  heroBanner: {
+    backgroundColor: colors.verde,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 24,
+  },
+  heroFila: { flexDirection: 'row', alignItems: 'center' },
+  heroTitulo: { fontSize: 22, fontWeight: '900', color: colors.blanco },
+  heroSub: { fontSize: 14, color: 'rgba(255,255,255,0.7)', marginTop: 4 },
+  heroFoto: { width: 48, height: 48, borderRadius: 12, borderWidth: 2, borderColor: 'rgba(255,255,255,0.5)' },
+  heroAvatar: { width: 48, height: 48, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.4)', alignItems: 'center', justifyContent: 'center' },
+  heroInicial: { fontSize: 20, fontWeight: '900', color: colors.blanco },
+
+  // Sección
+  seccionTitulo: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textoSuave,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    paddingHorizontal: 16,
+    marginTop: 20,
+    marginBottom: 8,
+  },
+
+  // Card de negocio en lista
+  negocioCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.blanco,
+    marginHorizontal: 16,
+    marginBottom: 10,
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.borde,
+  },
+  avatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: colors.verdeFondo,
+    borderWidth: 1.5,
+    borderColor: colors.verdeClaro,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+  avatarLetra: { fontSize: 22, fontWeight: '900', color: colors.verde },
+  negocioInfo: { flex: 1 },
+  negocioNombre: { fontSize: 16, fontWeight: '800', color: colors.texto },
+  negocioZona: { fontSize: 12, color: colors.textoSuave, marginTop: 2 },
+  negocioMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
+  cantProd: { fontSize: 12, fontWeight: '600', color: colors.verde },
+  sinRating: { fontSize: 12, color: colors.textoSuave },
+  chevron: { fontSize: 24, color: colors.borde, marginLeft: 8 },
+
+  // Header de tienda
+  tiendaHeader: {
+    backgroundColor: colors.verde,
+    alignItems: 'center',
+    paddingVertical: 28,
+    paddingHorizontal: 20,
+  },
+  avatarGrande: {
+    width: 76,
+    height: 76,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  avatarLetraGrande: { fontSize: 34, fontWeight: '900', color: colors.blanco },
+  tiendaNombre: { fontSize: 22, fontWeight: '900', color: colors.blanco },
+  tiendaZona: { fontSize: 13, color: 'rgba(255,255,255,0.7)', marginTop: 4 },
+
+  // Producto en tienda
+  productoFila: { flexDirection: 'row', alignItems: 'center' },
+  productoNombre: { fontSize: 15, fontWeight: '700', color: colors.texto },
+  productoDetalle: { fontSize: 13, color: colors.textoSuave, marginTop: 3 },
+  productoPrecioCol: { alignItems: 'flex-end', marginLeft: 12 },
+  productoPrecio: { fontSize: 17, fontWeight: '900', color: colors.verde },
+  productoPrecioSub: { fontSize: 11, color: colors.textoSuave },
+  btnAgregar: {
+    marginTop: 8,
+    backgroundColor: colors.verde,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  btnAgregarTxt: { color: colors.blanco, fontWeight: '700', fontSize: 13 },
+
+  // Pedidos
+  pedidoFila: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  detalleSuave: { fontSize: 12, color: colors.textoSuave, marginTop: 3 },
+  yaCalificado: { marginTop: 10, fontSize: 13, color: colors.verdeClaro, fontWeight: '600' },
+
+  // Calificación
   calificacionBox: {
     marginTop: 14,
     padding: 14,
@@ -265,7 +474,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borde,
   },
-  calificacionTitulo: { fontSize: 14, fontWeight: '700', color: colors.texto, marginBottom: 10 },
+  calificacionTitulo: { fontSize: 14, fontWeight: '700', color: colors.texto, marginBottom: 10, lineHeight: 20 },
   comentarioInput: {
     borderWidth: 1,
     borderColor: colors.borde,
@@ -278,4 +487,10 @@ const s = StyleSheet.create({
     backgroundColor: colors.blanco,
     minHeight: 60,
   },
+
+  // Compartidos
+  filaEntre: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
+  negrita: { fontWeight: '800', color: colors.texto, fontSize: 15 },
+  separador: { height: 1, backgroundColor: colors.borde, marginVertical: 10 },
+  nota: { marginTop: 10, fontSize: 12, color: colors.textoSuave },
 });
