@@ -1,12 +1,4 @@
-// ─────────────────────────────────────────────────────────────
-// Configuración de Supabase
-// 1. Creá un proyecto en https://supabase.com
-// 2. Andá a Project Settings → API
-// 3. Pegá la URL y la anon key acá
-// ─────────────────────────────────────────────────────────────
-export const SUPABASE_URL = 'https://TU_PROYECTO.supabase.co';
-export const SUPABASE_ANON_KEY = 'TU_ANON_KEY';
+export const SUPABASE_URL = 'https://tmxswombvusnxewolybt.supabase.co';
+export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRteHN3b21idnVzbnhld29seWJ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyNjgxNzEsImV4cCI6MjA5Njg0NDE3MX0.FdEfdFiyZvW2FoSbuyZ39mRcKZqhkck1R2hewCxzCLE';
 
-// Cuando ambos estén cargados, el backend estará activo.
-// Mientras tanto la app funciona en modo demo (datos en memoria).
-export const SUPABASE_LISTO = !SUPABASE_URL.includes('TU_PROYECTO');
+export const SUPABASE_LISTO = true;
