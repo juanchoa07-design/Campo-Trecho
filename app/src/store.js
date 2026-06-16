@@ -200,6 +200,7 @@ export function StoreProvider({ children }) {
         dispatch({ type: 'ACTUALIZAR_PERFIL', payload: { id, ...cambios } });
       } catch (e) {
         dispatch({ type: 'SET_ERROR', payload: e.message });
+        throw e;
       }
     },
 

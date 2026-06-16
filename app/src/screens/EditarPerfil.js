@@ -39,12 +39,20 @@ export default function EditarPerfil({ volver }) {
       return;
     }
     setGuardando(true);
-    const cambios = { nombre: nombre.trim(), negocio: negocio.trim() || null, zona: zona.trim() || null };
-    // Solo incluimos fotoUri si el usuario eligió una nueva (no la URL ya guardada)
-    if (fotoUri && fotoUri !== u.foto_url) cambios.fotoUri = fotoUri;
-    await api.actualizarPerfil(cambios);
-    setGuardando(false);
-    Alert.alert('Perfil actualizado ✅', '', [{ text: 'OK', onPress: volver }]);
+    try {
+      const cambios = { nombre: nombre.trim() };
+      if (u.rol === 'productor') {
+        cambios.negocio = negocio.trim() || null;
+        cambios.zona    = zona.trim()    || null;
+      }
+      if (fotoUri && fotoUri !== u.foto_url) cambios.fotoUri = fotoUri;
+      await api.actualizarPerfil(cambios);
+      Alert.alert('Perfil actualizado', '', [{ text: 'OK', onPress: volver }]);
+    } catch (e) {
+      Alert.alert('Error al guardar', e.message || 'Intentá de nuevo.');
+    } finally {
+      setGuardando(false);
+    }
   };
 
   const inicial = (u.negocio || u.nombre || '?')[0].toUpperCase();
@@ -68,7 +76,7 @@ export default function EditarPerfil({ volver }) {
               <Text style={s.fotoBadgeTxt}>📷</Text>
             </View>
           </TouchableOpacity>
-          <Text style={s.fotoHint}>Tocá para cambiar la foto del negocio</Text>
+          <Text style={s.fotoHint}>{u.rol === 'productor' ? 'Tocá para cambiar la foto del negocio' : 'Tocá para cambiar tu foto de perfil'}</Text>
         </View>
 
         <Tarjeta>
@@ -81,13 +89,6 @@ export default function EditarPerfil({ volver }) {
             <Text style={s.seccion}>Datos del negocio</Text>
             <Campo etiqueta="Nombre del establecimiento" placeholder="Establecimiento García" value={negocio} onChangeText={setNegocio} />
             <Campo etiqueta="Zona" placeholder="Sauce, Canelones" value={zona} onChangeText={setZona} />
-          </Tarjeta>
-        )}
-
-        {u.rol === 'comprador' && (
-          <Tarjeta>
-            <Text style={s.seccion}>Tu negocio</Text>
-            <Campo etiqueta="Nombre de tu negocio" placeholder="Restaurante El Campo" value={negocio} onChangeText={setNegocio} />
           </Tarjeta>
         )}
 
