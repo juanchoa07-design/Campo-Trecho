@@ -1,5 +1,6 @@
 import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system';
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_LISTO } from './config';
 
@@ -70,15 +71,25 @@ export async function sbActualizarPerfil(userId, cambios) {
 }
 
 export async function sbSubirFoto(userId, uri) {
-  const ext = uri.split('.').pop().toLowerCase();
-  const path = `${userId}/perfil.${ext}`;
+  // Detectar extensión (iOS puede devolver .heic, Android .jpg, etc.)
+  const match = uri.match(/\.(\w+)(\?|$)/);
+  const ext   = match ? match[1].toLowerCase() : 'jpg';
+  const mime  = ext === 'png' ? 'image/png' : 'image/jpeg';
+  const path  = `${userId}/perfil.${ext}`;
 
-  const response = await fetch(uri);
-  const blob = await response.blob();
+  // Leer como base64 con expo-file-system (más confiable que fetch() en RN)
+  const base64 = await FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+
+  // Convertir base64 → Uint8Array para Supabase Storage
+  const binary = atob(base64);
+  const bytes  = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
   const { error } = await supabase.storage
     .from('fotos')
-    .upload(path, blob, { upsert: true, contentType: `image/${ext}` });
+    .upload(path, bytes, { upsert: true, contentType: mime });
 
   if (error) throw new Error(error.message);
 
